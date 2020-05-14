@@ -1,24 +1,73 @@
-version: '2'
+version: '3.6'
 services:
   mysql-petclinic:
     image: mysql:5.7
     container_name: mysql-petclinic
     ports:
-      - 3306:3306
+      - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=petclinic
-      - MYSQL_DATABASE=petclinic
+      MYSQL_ROOT_PASSWORD: petclinic
+      MYSQL_DATABASE: petclinic
+      MYSQL_ROOT_HOST: '%'
     volumes:
       - "./conf.d:/etc/mysql/conf.d:ro"
+    networks:
+      - pinpoint-docker_pinpoint
 
 
   spring-petclinic:
     image: arey/springboot-petclinic
     container_name: spring-petclinic
-    mem_limit: 512M
+    #mem_limit: 512M
     depends_on:
       - mysql-petclinic
-    ports:
-     - 8080:8080
+    volumes:
+      - data-volume:/pinpoint-agent
     environment:
-     - SPRING_PROFILES_ACTIVE=mysql,prod
+            #JAVA_OPTS: "-javaagent:/pinpoint-agent/pinpoint-bootstrap-${PINPOINT_VERSION}.jar -Dpinpoint.agentId=${AGENT_ID} -Dpinpoint.applicationName=${APP_NAME} -Dpinpoint.profiler.profiles.active=${SPRING_PROFILES}"
+      JAVA_TOOL_OPTIONS: "-javaagent:/pinpoint-agent/pinpoint-bootstrap-${PINPOINT_VERSION}.jar -Dpinpoint.agentId=${AGENT_ID} -Dpinpoint.applicationName=${APP_NAME} -Dpinpoint.profiler.profiles.active=${SPRING_PROFILES}"
+      SPRING_PROFILES_ACTIVE: mysql,prod
+    ports:
+     - "8080:8080"
+    links:
+      - "mysql-petclinic:mysql-petclinic"
+    networks:
+      - pinpoint-docker_pinpoint
+
+  pinpoint-agent:
+    build:
+      context: pinpoint-agent/
+      dockerfile: Dockerfile
+      args:
+        - PINPOINT_VERSION=${PINPOINT_VERSION}
+
+    container_name: "${PINPOINT_AGENT_NAME}"
+    image: "pinpointdocker/pinpoint-agent:${PINPOINT_VERSION}"
+
+    restart: unless-stopped
+
+    networks:
+      - pinpoint-docker_pinpoint
+    volumes:
+      - data-volume:/pinpoint-agent
+    environment:
+      - SPRING_PROFILES=${SPRING_PROFILES}
+      - COLLECTOR_IP=${COLLECTOR_IP}
+      - PROFILER_TRANSPORT_AGENT_COLLECTOR_PORT=${PROFILER_TRANSPORT_AGENT_COLLECTOR_PORT}
+      - PROFILER_TRANSPORT_METADATA_COLLECTOR_PORT=${PROFILER_TRANSPORT_METADATA_COLLECTOR_PORT}
+      - PROFILER_TRANSPORT_STAT_COLLECTOR_PORT=${PROFILER_TRANSPORT_STAT_COLLECTOR_PORT}
+      - PROFILER_TRANSPORT_SPAN_COLLECTOR_PORT=${PROFILER_TRANSPORT_SPAN_COLLECTOR_PORT}
+      - PROFILER_SAMPLING_RATE=${PROFILER_SAMPLING_RATE}
+      - COLLECTOR_TCP_PORT=${COLLECTOR_TCP_PORT}
+      - COLLECTOR_STAT_PORT=${COLLECTOR_STAT_PORT}
+      - COLLECTOR_SPAN_PORT=${COLLECTOR_SPAN_PORT}
+      - PROFILER_TRANSPORT_COLLECTOR_IP=${PROFILER_TRANSPORT_COLLECTOR_IP}
+      - DEBUG_LEVEL=${AGENT_DEBUG_LEVEL}
+      - PROFILER_TRANSPORT_MODULE=${PROFILER_TRANSPORT_MODULE}
+
+volumes:
+  data-volume:
+
+networks:
+  pinpoint-docker_pinpoint:
+          #external: true
